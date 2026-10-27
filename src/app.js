@@ -720,8 +720,8 @@ function redrawStatic() {
 
 // ---------------------------------------------------------------- boot
 async function boot() {
+  initControls(); // creates the population options first
   syncControls();
-  initControls();
   renderBadges();
   initTutorial();
   renderChallengeGrid();
