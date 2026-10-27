@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Averages Lab: The Central Limit Theorem</title>
+  <meta name="description" content="An interactive 3D simulation, a guided tutorial, prediction challenges and a 90-second narrated video that teach the Central Limit Theorem to high-school, bachelor's and master's students.">
+  <meta name="theme-color" content="#14132a">
+  <link rel="preload" href="vendor/fonts/bricolage-grotesque-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="vendor/fonts/atkinson-hyperlegible-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="src/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2314132a'/%3E%3Cpath d='M8 50 C 20 50 22 14 32 14 C 42 14 44 50 56 50' fill='none' stroke='%23f2b533' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body data-depth="hs">
+<a class="skip" href="#lab">Skip to the simulation</a>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="#top" aria-label="Averages Lab, back to top">
+      <svg viewBox="0 0 64 64" width="34" height="34" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#14132a"/><path d="M8 50 C 20 50 22 14 32 14 C 42 14 44 50 56 50" fill="none" stroke="#f2b533" stroke-width="6" stroke-linecap="round"/></svg>
+      <span>Averages Lab</span>
+    </a>
+    <nav class="toplinks" aria-label="Sections">
+      <a href="#tutorial">Tutorial</a>
+      <a href="#lab">Lab</a>
+      <a href="#challenges">Challenges</a>
+      <a href="#why">Why</a>
+      <a href="#history">History</a>
+      <a href="#uses">Uses</a>
+      <a href="#video">Video</a>
+    </nav>
+    <fieldset class="depth" aria-label="Explanation level">
+      <legend class="sr-only">Explain it for</legend>
+      <span class="depth-label" aria-hidden="true">Explain for</span>
+      <label><input type="radio" name="depth" value="hs" checked><span>High school</span></label>
+      <label><input type="radio" name="depth" value="ba"><span>Bachelor's</span></label>
+      <label><input type="radio" name="depth" value="ma"><span>Master's</span></label>
+    </fieldset>
+  </div>
+</header>
+
+<main id="top">
+  <!-- ============ HERO ============ -->
+  <section class="hero wrap">
+    <div class="hero-text">
+      <p class="eyebrow">The Central Limit Theorem, by experiment</p>
+      <h1>Why do averages <em>always</em> make a bell?</h1>
+      <p class="lead">Professor Ada's research team collects messy data: dice rolls, yes/no survey answers, waiting times at a help desk. Every population looks different. Yet whenever they average a sample and repeat that many times, the same bell shape appears. Your mission is to find out why, and when it fails.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#tutorial">Start the 2-minute tutorial</a>
+        <a class="btn" href="#lab">Go straight to the lab</a>
+        <a class="btn btn-ghost" href="#video">Watch the 90-second video</a>
+      </div>
+    </div>
+    <aside class="statement card" aria-labelledby="clt-statement">
+      <h2 id="clt-statement">The theorem in one breath</h2>
+      <p>Take many samples of size <var>n</var> from a population with mean <var>μ</var> and standard deviation <var>σ</var>. If the observations are independent and <var>σ</var> is finite, then for large enough <var>n</var> the <strong>sample means</strong> are approximately normally distributed:</p>
+      <p class="formula" aria-label="x bar is approximately normal with mean mu and standard deviation sigma over root n"><span class="xbar">x</span> ≈ N( μ , σ / √n )</p>
+      <p class="small">Centre: the true mean <var>μ</var>. Spread (the <em>standard error</em>): <var>σ</var>/√<var>n</var>. It is about the averages, not the raw data.</p>
+    </aside>
+  </section>
+
+  <!-- ============ TUTORIAL ============ -->
+  <section id="tutorial" class="band" aria-labelledby="tut-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Part 1</p>
+        <h2 id="tut-h">Six words you need, with the lab showing each one</h2>
+      </div>
+      <div class="tutorial card" id="tutorialCard">
+        <div class="tut-progress" role="tablist" aria-label="Tutorial steps" id="tutDots"></div>
+        <div class="tut-body" id="tutBody" aria-live="polite"></div>
+        <div class="tut-nav">
+          <button class="btn" id="tutPrev" type="button">Back</button>
+          <button class="btn btn-accent" id="tutAction" type="button">Show me</button>
+          <button class="btn btn-primary" id="tutNext" type="button">Next</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LAB ============ -->
+  <section id="lab" class="lab-section" aria-labelledby="lab-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Part 2</p>
+        <h2 id="lab-h">The lab</h2>
+        <p class="section-sub">Pick a population, choose the sample size <var>n</var>, then run. Drag the 3D view to turn it, scroll or pinch to zoom.</p>
+      </div>
+
+      <div class="lab-grid">
+        <!-- controls -->
+        <form class="panel controls card" id="controls" aria-label="Simulation controls" onsubmit="return false">
+          <h3 class="panel-title">Settings</h3>
+          <label class="field">
+            <span class="field-label">Population</span>
+            <select id="popSelect"></select>
+          </label>
+          <p class="pop-story small" id="popStory"></p>
+          <label class="field" id="pField" hidden>
+            <span class="field-label">Chance of “yes” <var>p</var> <output id="pOut">0.20</output></span>
+            <input type="range" id="pRange" min="0.01" max="0.99" step="0.01" value="0.2">
+          </label>
+          <label class="field">
+            <span class="field-label">Sample size <var>n</var> <output id="nOut">10</output></span>
+            <input type="range" id="nRange" min="1" max="100" step="1" value="10" aria-describedby="nHelp">
+            <span class="hint" id="nHelp">How many values go into each average.</span>
+          </label>
+          <label class="field">
+            <span class="field-label">Number of samples <output id="repsOut">1,000</output></span>
+            <input type="range" id="repsRange" min="0" max="7" step="1" value="4" aria-describedby="repsHelp">
+            <span class="hint" id="repsHelp">How many averages to collect.</span>
+          </label>
+          <fieldset class="field speed">
+            <legend class="field-label">Speed</legend>
+            <div class="seg">
+              <label><input type="radio" name="speed" value="watch"><span>Watch</span></label>
+              <label><input type="radio" name="speed" value="normal" checked><span>Normal</span></label>
+              <label><input type="radio" name="speed" value="fast"><span>Fast</span></label>
+              <label><input type="radio" name="speed" value="turbo"><span>Turbo</span></label>
+            </div>
+          </fieldset>
+          <div class="field seed-row">
+            <label for="seedInput" class="field-label">Random seed</label>
+            <div class="seed-inputs">
+              <input id="seedInput" type="text" value="2026" inputmode="text" autocomplete="off" aria-describedby="seedHelp">
+              <button type="button" class="btn btn-small" id="newSeed">New seed</button>
+            </div>
+            <span class="hint" id="seedHelp">Same seed, same experiment. Share it to reproduce a result.</span>
+          </div>
+          <label class="check"><input type="checkbox" id="zoomCheck"> <span>Zoom the means axis around <var>μ</var></span></label>
+          <div class="run-row">
+            <button type="button" class="btn btn-primary" id="runBtn" aria-pressed="false">Run</button>
+            <button type="button" class="btn" id="stepBtn">Step</button>
+            <button type="button" class="btn" id="resetBtn">Reset</button>
+          </div>
+          <p class="hint kbd-hint">Keys: <kbd>Space</kbd> run/pause · <kbd>S</kbd> step · <kbd>R</kbd> reset</p>
+        </form>
+
+        <!-- stage + flat charts -->
+        <div class="stage-col">
+          <div class="stage card" id="stageWrap">
+            <div class="stage-canvas" id="stage" role="img" aria-label="3D view: population bars at the back, sample means histogram at the front. The flat charts below show the same data."></div>
+            <div class="stage-legend" aria-hidden="true">
+              <span><i class="sw sw-pop"></i>population</span>
+              <span><i class="sw sw-ball"></i>one sample's values</span>
+              <span><i class="sw sw-mean"></i>sample mean</span>
+              <span><i class="sw sw-curve"></i>normal curve</span>
+            </div>
+            <div class="stage-tools" role="group" aria-label="3D camera">
+              <button type="button" class="chip" data-view="angle">Angle</button>
+              <button type="button" class="chip" data-view="front">Front</button>
+              <button type="button" class="chip" data-view="top">Top</button>
+              <button type="button" class="chip" id="rotL" aria-label="Rotate view left">⟲</button>
+              <button type="button" class="chip" id="rotR" aria-label="Rotate view right">⟳</button>
+              <label class="chip chip-check"><input type="checkbox" id="autoRot"> Spin</label>
+            </div>
+          </div>
+
+          <div class="flat-grid">
+            <figure class="card chart-card">
+              <figcaption>
+                <strong>1 · Population</strong> <span class="small">(single values)</span>
+              </figcaption>
+              <canvas id="popChart" class="chart" role="img" aria-label="Population chart"></canvas>
+              <p class="legend small"><span class="key key-hatch" aria-hidden="true"></span> population shape (hatched) · <span class="key key-dot" aria-hidden="true"></span> dotted line: centre <var>μ</var></p>
+              <p class="custom-hint small" id="customHint" hidden>Drag on the bars to reshape them. Keyboard: focus the chart, use ← → to pick a bar and ↑ ↓ to change it.</p>
+            </figure>
+            <figure class="card chart-card">
+              <figcaption>
+                <strong>2 · Sample means</strong> <span class="small">(one per sample)</span>
+              </figcaption>
+              <canvas id="meansChart" class="chart" role="img" aria-label="Histogram of sample means"></canvas>
+              <p class="legend small"><span class="key key-solid" aria-hidden="true"></span> simulated sample means (solid bars) · <span class="key key-dash" aria-hidden="true"></span> normal approximation N(μ, σ/√n) (dashed line)</p>
+            </figure>
+          </div>
+          <p class="reading card" id="reading" aria-live="polite"></p>
+        </div>
+
+        <!-- stats + achievements -->
+        <aside class="panel stats card" aria-labelledby="stats-h">
+          <h3 class="panel-title" id="stats-h">Live numbers</h3>
+          <dl class="stat-list">
+            <div class="stat-group-title">Population (theory)</div>
+            <div><dt>Mean <var>μ</var></dt><dd id="st-mu">–</dd></div>
+            <div><dt>Std. deviation <var>σ</var></dt><dd id="st-sigma">–</dd></div>
+            <div class="hl"><dt>Standard error <var>σ</var>/√<var>n</var></dt><dd id="st-se">–</dd></div>
+            <div class="stat-group-title">Your simulation</div>
+            <div><dt>Samples drawn</dt><dd id="st-N">0</dd></div>
+            <div><dt>Mean of the means</dt><dd id="st-mbar">–</dd></div>
+            <div class="hl"><dt>SD of the means</dt><dd id="st-sd">–</dd></div>
+            <div><dt>SD of means ÷ theory</dt><dd id="st-ratio">–</dd></div>
+            <div><dt>Skewness of means <button type="button" class="info" aria-describedby="tipSkew" aria-label="What is skewness?">?</button></dt><dd id="st-skew">–</dd></div>
+            <div class="ba-up"><dt>IQR of means</dt><dd id="st-iqr">–</dd></div>
+            <div><dt>Within μ ± 1.96·SE</dt><dd id="st-in95">–</dd></div>
+          </dl>
+          <p class="hint" id="tipSkew" role="tooltip">Skewness measures lopsidedness. 0 means symmetric like a bell; positive means a long right tail.</p>
+
+          <h3 class="panel-title badges-title" id="badges">Achievements <span class="badge-count" id="badgeCount">0 / 10</span></h3>
+          <div class="meter" role="progressbar" aria-labelledby="badges" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0" id="badgeMeter"><span></span></div>
+          <ul class="badge-list" id="badgeList"></ul>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CHALLENGES ============ -->
+  <section id="challenges" class="band" aria-labelledby="ch-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Part 3</p>
+        <h2 id="ch-h">“What if?” challenges</h2>
+        <p class="section-sub">Each challenge changes one setting. Predict first, then let the lab test you. Wrong guesses are useful: they show exactly where intuition and statistics disagree.</p>
+      </div>
+      <div class="challenge-grid" id="challengeGrid"></div>
+      <div class="challenge-panel card" id="challengePanel" hidden tabindex="-1"></div>
+    </div>
+  </section>
+
+  <!-- ============ WHY ============ -->
+  <section id="why" class="prose-section wrap" aria-labelledby="why-h">
+    <div class="section-head">
+      <p class="eyebrow">Part 4</p>
+      <h2 id="why-h">Why does it behave like that?</h2>
+    </div>
+    <div class="two-col">
+      <div class="prose">
+        <h3>1. Highs and lows cancel</h3>
+        <p>An average mixes values together. One unusually large value in a sample is usually sitting next to ordinary or small ones, so its effect is diluted. Getting an extreme average needs <em>every</em> value in the sample to be extreme in the same direction, which becomes very unlikely as <var>n</var> grows.</p>
+        <h3>2. The middle has more ways to happen</h3>
+        <p>Roll two dice. A total of 2 can happen in only one way (1 + 1), but a total of 7 can happen in six ways. With more dice the count of combinations piles up even more in the middle, and the pile takes on the bell shape. The figure shows this counting for one, two and three dice.</p>
+        <h3>3. The spread shrinks like √<var>n</var></h3>
+        <p>For independent values, variances add. The sum of <var>n</var> values has variance <var>n</var>σ², so the average has variance <var>n</var>σ²/<var>n</var>² = σ²/<var>n</var>. Take the square root and you get the standard error σ/√<var>n</var>. Four times more data only halves the uncertainty.</p>
+        <div class="ba-up callout">
+          <h3>Bachelor's level: why exactly the normal shape?</h3>
+          <p>Adding independent variables means convolving their distributions, and each convolution smooths the shape. After standardising, the skewness of <span class="xbar">x</span> shrinks like γ/√<var>n</var> and the excess kurtosis like κ/<var>n</var>, so every feature that makes a distribution special fades away. The normal distribution is the only finite-variance shape that is unchanged by this “add and rescale” process, so it is where the process settles.</p>
+          <p>That also explains why a strongly skewed population needs bigger samples. The exponential distribution has skewness 2, so at <var>n</var> = 30 the means still have skewness 2/√30 ≈ 0.37. The popular “<var>n</var> ≥ 30” rule is a rough habit, not a law.</p>
+        </div>
+        <div class="ma-up callout callout-deep">
+          <h3>Master's level: the proof idea in four lines</h3>
+          <p>Let Y = (X − μ)/σ with characteristic function φ<sub>Y</sub>(t) = 1 − t²/2 + o(t²). For Z<sub>n</sub> = √n (<span class="xbar">x</span> − μ)/σ = Σ Y<sub>i</sub>/√n, independence gives</p>
+          <p class="formula small-formula">φ<sub>Z<sub>n</sub></sub>(t) = [ φ<sub>Y</sub>(t/√n) ]<sup>n</sup> = [ 1 − t²/(2n) + o(1/n) ]<sup>n</sup> → e<sup>−t²/2</sup>,</p>
+          <p>which is the characteristic function of N(0, 1). Lévy's continuity theorem turns this into convergence in distribution. The step that needs finite variance is the second-order expansion: with heavy tails such as the Cauchy (φ(t) = e<sup>−|t|</sup>) the expansion fails, and indeed the mean of <var>n</var> Cauchy values is again Cauchy with the same scale.</p>
+        </div>
+      </div>
+      <figure class="card dice-fig">
+        <figcaption><strong>Counting ways:</strong> number of dice combinations giving each <em>average</em></figcaption>
+        <canvas id="diceChart" class="chart chart-tall" role="img" aria-label="Three small bar charts. One die: six equal bars, flat. Two dice: a triangle peaking at an average of 3.5. Three dice: a rounded hill already close to a bell, also centred at 3.5."></canvas>
+        <p class="legend small">Top: 1 die (flat) · Middle: 2 dice (triangle) · Bottom: 3 dice (already bell-like). All centred at 3.5.</p>
+      </figure>
+    </div>
+
+    <div class="lln card">
+      <h3>CLT or Law of Large Numbers? They answer different questions.</h3>
+      <div class="lln-grid">
+        <div>
+          <p class="tag">Law of Large Numbers</p>
+          <p><strong>Where</strong> does the average go? As <var>n</var> grows, <span class="xbar">x</span> gets closer and closer to <var>μ</var>. It says nothing about the shape of the errors along the way.</p>
+        </div>
+        <div>
+          <p class="tag tag-amber">Central Limit Theorem</p>
+          <p><strong>How</strong> does the average wobble around <var>μ</var>? The errors <span class="xbar">x</span> − μ are roughly normal, with size σ/√<var>n</var>. That is what lets us put a margin of error on an estimate.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ASSUMPTIONS ============ -->
+  <section id="assumptions" class="band" aria-labelledby="as-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Read the small print</p>
+        <h2 id="as-h">When the theorem works, and when it does not</h2>
+      </div>
+      <div class="assume-grid">
+        <div class="card assume">
+          <h3>Independence</h3>
+          <p>Each observation should not influence the others. Measurements from the same patient, the same machine on the same shift, or neighbouring days in a time series are often correlated. Correlation changes the standard error (usually making it bigger than σ/√<var>n</var>).</p>
+          <p class="ma-up small">Advanced: CLTs exist for weakly dependent data (mixing sequences, martingale differences), but the variance must include the autocovariances, which is why time-series work uses HAC / Newey-West standard errors.</p>
+        </div>
+        <div class="card assume">
+          <h3>Finite variance</h3>
+          <p>If extreme values are so common that the variance is infinite, averaging does not tame them. Try the <strong>Cauchy</strong> population in the lab: the means never settle, whatever <var>n</var> you choose.</p>
+          <p class="ma-up small">Advanced: sums of heavy-tailed variables converge instead to α-stable laws (the generalised CLT). Financial returns and insurance losses sometimes sit close to this territory.</p>
+        </div>
+        <div class="card assume">
+          <h3>“Large enough” depends on the population</h3>
+          <p>There is no single sample size that works for every population. A symmetric population may look normal at <var>n</var> = 5; a strongly skewed one may need <var>n</var> in the hundreds; a rare yes/no event needs both <var>np</var> and <var>n</var>(1 − <var>p</var>) to be reasonably large (a common guide is at least 10).</p>
+          <p class="ba-up small">Bachelor's: the Berry–Esseen theorem gives a guaranteed bound on the error of the normal approximation, proportional to E|X − μ|³ / (σ³ √n).</p>
+        </div>
+        <div class="card assume">
+          <h3>Identical distribution is not essential</h3>
+          <p>The classic version assumes every observation comes from the same population. Later versions allow different populations, as long as no single observation dominates the total.</p>
+          <p class="ma-up small">Advanced: this is the Lindeberg condition. Lyapunov's condition (a slightly higher moment) is a convenient sufficient check.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section id="history" class="prose-section wrap" aria-labelledby="hist-h">
+    <div class="section-head">
+      <p class="eyebrow">Part 5</p>
+      <h2 id="hist-h">How it was discovered</h2>
+      <p class="section-sub">Nobody discovered it in one go. It took about two centuries, moving from gamblers' coin problems to a general law of probability.</p>
+    </div>
+    <ol class="timeline">
+      <li><span class="year">1733</span><div><h3>Abraham de Moivre</h3><p>A French mathematician living in London, working on gambling problems. He showed that the number of heads in many coin tosses follows a smooth bell curve, which made long binomial calculations practical. This is the first special case of the theorem.</p></div></li>
+      <li><span class="year">1809–1812</span><div><h3>Carl Friedrich Gauss and Pierre-Simon Laplace</h3><p>Gauss used the normal curve for errors in astronomical measurements. Laplace then argued that a sum of many small independent errors should be approximately normal, whatever the individual errors look like, and set this out in his 1812 <cite>Théorie analytique des probabilités</cite>.</p></div></li>
+      <li><span class="year">1870s–1889</span><div><h3>Francis Galton's bean machine</h3><p>Galton built a board where beads bounce left or right off pins and pile up in a bell shape. It made the idea visible to non-mathematicians; the 3D lab above is a descendant of that board.</p></div></li>
+      <li><span class="year">1901</span><div><h3>Aleksandr Lyapunov</h3><p>Gave the first fully rigorous proof under general conditions, using characteristic functions. From here on the result was a theorem, not just a very good observation.</p></div></li>
+      <li><span class="year">1920</span><div><h3>George Pólya names it</h3><p>Pólya called it the <em>zentraler Grenzwertsatz</em>, the “central limit theorem”. “Central” refers to its central importance in probability theory.</p></div></li>
+      <li><span class="year">1922–1935</span><div><h3>Lindeberg, Lévy and Feller</h3><p>They pinned down exactly when the theorem holds (the Lindeberg condition) and when it cannot, completing the classical story.</p></div></li>
+      <li><span class="year">1924 →</span><div><h3>From mathematics to factories</h3><p>Walter Shewhart, an engineer at Western Electric and later Bell Telephone Laboratories, designed control charts that track averages of small subgroups of products. Because averages are close to normal, simple limits of μ ± 3σ/√<var>n</var> could flag a process going wrong. Quality engineering still runs on this idea.</p></div></li>
+    </ol>
+  </section>
+
+  <!-- ============ USES ============ -->
+  <section id="uses" class="band" aria-labelledby="uses-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Part 6</p>
+        <h2 id="uses-h">What it is used for, and why modern research leans on it</h2>
+        <p class="section-sub">Most data analysis reports an estimate plus its uncertainty. The CLT is the reason a simple, shared recipe for that uncertainty works across fields as different as medicine, marketing and manufacturing.</p>
+      </div>
+      <div class="uses-grid">
+        <div class="card use-col">
+          <h3>Academic research</h3>
+          <ul class="use-list">
+            <li><strong>Confidence intervals.</strong> <span class="xbar">x</span> ± 1.96·SE gives a 95% interval for the true mean, even when the raw data are not normal.</li>
+            <li><strong>Hypothesis tests.</strong> z-tests, t-tests, tests for proportions and much of ANOVA rely on test statistics that are approximately normal in large samples.</li>
+            <li><strong>Surveys and polls.</strong> A poll of 1,000 people has a margin of error of about ±3 percentage points: 1.96 × √(0.5 × 0.5 / 1000) ≈ 0.031.</li>
+            <li><strong>Regression and modelling.</strong> Standard errors and p-values for regression coefficients, logistic models and maximum likelihood estimates come from CLT-type results.</li>
+            <li><strong>Clinical trials and meta-analysis.</strong> Differences in mean outcomes and pooled effect sizes are treated as approximately normal to judge whether a treatment works.</li>
+            <li class="ba-up"><strong>Simulation and the bootstrap.</strong> Monte Carlo estimates come with error bars of size σ/√<var>n</var>, and bootstrap methods are justified by the same asymptotic reasoning.</li>
+          </ul>
+        </div>
+        <div class="card use-col">
+          <h3>Industrial research and practice</h3>
+          <ul class="use-list">
+            <li><strong>Statistical process control.</strong> X̄ control charts watch the averages of small product samples; limits at μ ± 3σ/√<var>n</var> separate normal variation from real faults.</li>
+            <li><strong>A/B testing.</strong> Online companies compare conversion rates of two designs; with thousands of visitors per group the difference in rates is close to normal, so a z-test decides the winner.</li>
+            <li><strong>Measurement and sensors.</strong> Averaging 16 readings from a noisy sensor cuts random noise by a factor of 4. Labs and IoT systems use this every day.</li>
+            <li><strong>Reliability and quality engineering.</strong> Six Sigma capability studies, acceptance sampling and tolerance stack-ups all model sums and averages as normal.</li>
+            <li><strong>Risk pooling.</strong> Insurers and supply chains are more predictable in total than per customer: the total of many independent demands or claims is close to normal and relatively less variable.</li>
+            <li class="ba-up"><strong>Machine learning evaluation.</strong> The accuracy measured on a test set is an average of 0/1 outcomes, so its confidence interval comes straight from the CLT.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card why-matters">
+        <h3>Why it matters so much</h3>
+        <p>Researchers almost never know the true shape of their population. The CLT says they often do not need to: if they work with averages (or sums, or many common estimators) from reasonably large, independent samples, one well-understood distribution describes the uncertainty. That is why the same formulas appear in a psychology paper, a drug approval file and a production-line dashboard. It is also why the assumptions deserve respect: dependent data, heavy tails and small samples are where real analyses go wrong.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DEEPER ============ -->
+  <section id="deeper" class="prose-section wrap ma-up" aria-labelledby="deep-h">
+    <div class="section-head">
+      <p class="eyebrow">Master's corner</p>
+      <h2 id="deep-h">Formal statements worth knowing</h2>
+    </div>
+    <div class="deep-grid">
+      <div class="card"><h3>Lindeberg–Lévy (i.i.d.)</h3><p>If X<sub>1</sub>, …, X<sub>n</sub> are i.i.d. with E[X] = μ and 0 &lt; Var(X) = σ² &lt; ∞, then √n (<span class="xbar">x</span> − μ)/σ → N(0, 1) in distribution.</p></div>
+      <div class="card"><h3>Lindeberg–Feller</h3><p>For independent, non-identical X<sub>i</sub> with variances σ<sub>i</sub>² and s<sub>n</sub>² = Σσ<sub>i</sub>², the standardised sum is asymptotically normal if for every ε &gt; 0, (1/s<sub>n</sub>²) Σ E[(X<sub>i</sub> − μ<sub>i</sub>)² 1{|X<sub>i</sub> − μ<sub>i</sub>| &gt; ε s<sub>n</sub>}] → 0.</p></div>
+      <div class="card"><h3>Berry–Esseen</h3><p>With ρ = E|X − μ|³ &lt; ∞: sup<sub>x</sub> |F<sub>n</sub>(x) − Φ(x)| ≤ C ρ / (σ³ √n), with a universal constant C below 0.48. The error shrinks like 1/√n.</p></div>
+      <div class="card"><h3>Slutsky and the t-statistic</h3><p>Replacing σ with the sample SD s changes nothing asymptotically because s → σ in probability. For small samples from normal data, the exact distribution is Student's t (Gosset, 1908).</p></div>
+      <div class="card"><h3>Multivariate CLT and the delta method</h3><p>√n (<span class="xbar">x</span> − μ) → N<sub>k</sub>(0, Σ) for vectors. For a smooth function g, √n (g(<span class="xbar">x</span>) − g(μ)) → N(0, ∇g′ Σ ∇g), which gives standard errors for ratios, log odds and elasticities.</p></div>
+      <div class="card"><h3>Dependence and heavy tails</h3><p>Martingale and mixing CLTs cover time series with a long-run variance in place of σ². With infinite variance, suitably scaled sums converge to α-stable laws; the Cauchy is the α = 1 case.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ VIDEO ============ -->
+  <section id="video" class="band band-dark" aria-labelledby="vid-h">
+    <div class="wrap video-wrap">
+      <div class="section-head">
+        <p class="eyebrow">Part 7</p>
+        <h2 id="vid-h">The 90-second video</h2>
+        <p class="section-sub">What the theorem says, why it works, who found it and where it is used, narrated with on-screen captions.</p>
+      </div>
+      <div class="video-grid">
+        <div class="video-frame">
+          <video id="cltVideo" controls preload="metadata" playsinline poster="video/poster.jpg">
+            <source src="video/clt-explained-90s.mp4" type="video/mp4">
+            <track kind="captions" src="video/clt-captions.vtt" srclang="en" label="English">
+            Your browser cannot play this video. Use the download button instead.
+          </video>
+        </div>
+        <div class="video-side">
+          <a class="btn btn-primary btn-big" href="video/clt-explained-90s.mp4" download="CentralLimitTheorem-Explained-90s.mp4">Download video (MP4)</a>
+          <a class="btn" href="video/clt-narration.mp3" download>Download narration audio (MP3)</a>
+          <a class="btn" href="video/narration-script.md">Narration script with timestamps</a>
+          <a class="btn" href="video/clt-captions.vtt" download>Captions (WebVTT)</a>
+          <details class="transcript">
+            <summary>Read the transcript</summary>
+            <div id="transcript"></div>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ GLOSSARY ============ -->
+  <section id="glossary" class="prose-section wrap" aria-labelledby="glo-h">
+    <div class="section-head">
+      <p class="eyebrow">Reference</p>
+      <h2 id="glo-h">Glossary</h2>
+    </div>
+    <dl class="glossary">
+      <div><dt>Population</dt><dd>Every value you could possibly observe. Its average is μ and its spread is σ.</dd></div>
+      <div><dt>Sample</dt><dd>The <var>n</var> values you actually collect, chosen at random.</dd></div>
+      <div><dt>Sample mean (<span class="xbar">x</span>)</dt><dd>The average of one sample. Different samples give different <span class="xbar">x</span> values.</dd></div>
+      <div><dt>Sampling distribution</dt><dd>The distribution you would see if you repeated the sampling many times and plotted every <span class="xbar">x</span>. The CLT is a statement about this distribution.</dd></div>
+      <div><dt>Standard deviation (σ)</dt><dd>The typical distance of a single value from the population mean.</dd></div>
+      <div><dt>Standard error (SE)</dt><dd>The standard deviation of the sample mean: the typical distance of <span class="xbar">x</span> from μ. Equal to σ/√n for independent observations.</dd></div>
+      <div><dt>Normal distribution</dt><dd>The symmetric bell curve. About 68% of values lie within 1 SD of the centre and 95% within 1.96 SD.</dd></div>
+      <div><dt>Skewness</dt><dd>A number for lopsidedness. 0 is symmetric; a long right tail gives a positive value.</dd></div>
+      <div><dt>Independent</dt><dd>Knowing one observation tells you nothing about another.</dd></div>
+      <div><dt>Random seed</dt><dd>The starting number for the computer's random generator. Same seed, same sequence of “random” draws.</dd></div>
+    </dl>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p>Averages Lab · an open teaching resource on the Central Limit Theorem. Built with plain HTML, JavaScript and <a href="https://threejs.org/">three.js</a> (MIT licence). Fonts: Bricolage Grotesque, Atkinson Hyperlegible, JetBrains Mono (SIL Open Font Licence). Narration voice: Kokoro-82M (Apache 2.0).</p>
+    <p><a href="https://github.com/Rajan56/CentralLimitTheorem-Explained">Source code on GitHub</a></p>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<noscript><p class="noscript">This lab needs JavaScript for the simulation. All the explanations on this page still work without it.</p></noscript>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
