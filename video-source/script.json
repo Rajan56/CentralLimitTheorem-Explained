@@ -1,0 +1,127 @@
+{
+  "title": "The Central Limit Theorem in 90 seconds",
+  "voice": "af_heart",
+  "speed": 1.06,
+  "scenes": [
+    {
+      "id": 1,
+      "name": "What happens"
+    },
+    {
+      "id": 2,
+      "name": "The theorem"
+    },
+    {
+      "id": 3,
+      "name": "Why it works"
+    },
+    {
+      "id": 4,
+      "name": "How it was discovered"
+    },
+    {
+      "id": 5,
+      "name": "What it is used for"
+    },
+    {
+      "id": 6,
+      "name": "The fine print"
+    }
+  ],
+  "sentences": [
+    {
+      "scene": 1,
+      "text": "Roll one die, and every number from one to six is equally likely. The picture is flat.",
+      "tts": "Roll one die, and every number from one to six is equally likely. The picture is flat."
+    },
+    {
+      "scene": 1,
+      "text": "Now roll ten dice, average them, and repeat that thousands of times.",
+      "tts": "Now roll ten dice, average them, and repeat that thousands of times."
+    },
+    {
+      "scene": 1,
+      "text": "The averages pile up into a bell.",
+      "tts": "The averages pile up into a bell."
+    },
+    {
+      "scene": 2,
+      "text": "This is the Central Limit Theorem.",
+      "tts": "This is the Central Limit Theorem."
+    },
+    {
+      "scene": 2,
+      "text": "Take many independent samples from almost any population with finite variance, and the sample means become approximately normal.",
+      "tts": "Take many independent samples from almost any population with finite variance, and the sample means become approximately normal."
+    },
+    {
+      "scene": 2,
+      "text": "They centre on the true mean, μ, and their spread, the standard error, is σ divided by the square root of n.",
+      "tts": "They center on the true mean, mu, and their spread, the standard error, is sigma, divided by the square root of n."
+    },
+    {
+      "scene": 3,
+      "text": "Why does this happen? In an average, high and low values cancel each other out.",
+      "tts": "Why does this happen? In an average, high and low values cancel each other out."
+    },
+    {
+      "scene": 3,
+      "text": "And there are far more combinations that land near the middle than at the edges.",
+      "tts": "And there are far more combinations that land near the middle than at the edges."
+    },
+    {
+      "scene": 3,
+      "text": "Even strongly skewed data, like waiting times, are smoothed into a bell once the samples are large enough.",
+      "tts": "Even strongly skewed data, like waiting times, are smoothed into a bell once the samples are large enough."
+    },
+    {
+      "scene": 4,
+      "text": "The idea took two centuries to build.",
+      "tts": "The idea took two centuries to build."
+    },
+    {
+      "scene": 4,
+      "text": "Abraham de Moivre found the bell in coin tosses in 1733. Laplace generalised it around 1810, Lyapunov proved it in 1901, and George Pólya named it in 1920.",
+      "tts": "Abraham de Moivre found the bell in coin tosses in seventeen thirty-three. Laplace generalized it around eighteen ten, Lyapunov proved it in nineteen oh one, and George Polya named it in nineteen twenty.",
+      "cues": [
+        "Abraham",
+        "Laplace",
+        "Lyapunov",
+        "George"
+      ]
+    },
+    {
+      "scene": 5,
+      "text": "Today it sits underneath confidence intervals, hypothesis tests, opinion polls, clinical trials, A/B tests, and the control charts that keep factories on target.",
+      "tts": "Today it sits underneath confidence intervals, hypothesis tests, opinion polls, clinical trials, A B tests, and the control charts that keep factories on target.",
+      "cues": [
+        "confidence",
+        "hypothesis",
+        "opinion",
+        "clinical",
+        "A B",
+        "control"
+      ]
+    },
+    {
+      "scene": 5,
+      "text": "Whenever research reports an average with a margin of error, this theorem is quietly doing the work.",
+      "tts": "Whenever research reports an average with a margin of error, this theorem is quietly doing the work."
+    },
+    {
+      "scene": 6,
+      "text": "Just remember the conditions: independent observations, finite variance, and bigger samples for skewed data.",
+      "tts": "Just remember the conditions: independent observations, finite variance, and bigger samples for skewed data.",
+      "cues": [
+        "independent",
+        "finite",
+        "bigger"
+      ]
+    },
+    {
+      "scene": 6,
+      "text": "Now open the lab, and watch the bell appear for yourself.",
+      "tts": "Now open the lab, and watch the bell appear for yourself."
+    }
+  ]
+}

@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CLT video renderer</title>
+<style>
+@font-face { font-family: "Bricolage Grotesque"; src: url(../vendor/fonts/bricolage-grotesque-latin-800-normal.woff2) format("woff2"); font-weight: 800; }
+@font-face { font-family: "Bricolage Grotesque"; src: url(../vendor/fonts/bricolage-grotesque-latin-600-normal.woff2) format("woff2"); font-weight: 600; }
+@font-face { font-family: "Atkinson Hyperlegible"; src: url(../vendor/fonts/atkinson-hyperlegible-latin-400-normal.woff2) format("woff2"); font-weight: 400; }
+@font-face { font-family: "Atkinson Hyperlegible"; src: url(../vendor/fonts/atkinson-hyperlegible-latin-700-normal.woff2) format("woff2"); font-weight: 700; }
+@font-face { font-family: "JetBrains Mono"; src: url(../vendor/fonts/jetbrains-mono-latin-500-normal.woff2) format("woff2"); font-weight: 500; }
+html, body { margin: 0; background: #000; }
+canvas { display: block; }
+#ui { position: fixed; top: 730px; left: 0; color: #fff; font: 14px sans-serif; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1280" height="720"></canvas>
+<div id="ui"><input type="range" id="scrub" min="0" max="90" step="0.033" value="0" style="width:1000px"> <span id="tt"></span></div>
+<script>
+// Deterministic frame renderer: renderFrame(t) draws the video frame at time t (seconds).
+// Open this page in a browser to scrub through the video; render.mjs captures it frame by frame.
+const W = 1280, H = 720;
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const C = {
+  bg: '#14132a', bg2: '#1c1a38', grid: '#2b2856', ink: '#f4f0fb', ink2: '#bdb5d9', dim: '#7d77a3',
+  pop: '#8b72ff', popSoft: '#c9bcff', mean: '#f2b533', curve: '#37d0b9', red: '#ff8a70', good: '#7be0a0',
+};
+const HEAD = '"Bricolage Grotesque", sans-serif', BODY = '"Atkinson Hyperlegible", sans-serif', MONO = '"JetBrains Mono", monospace';
+let TL = null;
+
+// ---------- math helpers ----------
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, k) => a + (b - a) * k;
+const prog = (t, a, b) => clamp((t - a) / (b - a));
+const eo = (k) => 1 - Math.pow(1 - k, 3);
+const eio = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
+const phi = (z) => Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI);
+function mulberry32(a) { return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function lgamma(z) { // Lanczos
+  const g = 7, p = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - lgamma(1 - z);
+  z -= 1; let x = p[0]; for (let i = 1; i < g + 2; i++) x += p[i] / (z + i);
+  const t = z + g + 0.5; return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+}
+const gammaPdf = (x, k, th) => (x <= 0 ? 0 : Math.exp((k - 1) * Math.log(x) - x / th - lgamma(k) - k * Math.log(th)));
+
+// precomputed experiment: 5,000 averages of 10 dice (same idea as the lab's default)
+const rng = mulberry32(2026);
+const DICE_SUMS = [];
+for (let i = 0; i < 5000; i++) { let s = 0; for (let j = 0; j < 10; j++) s += 1 + Math.floor(6 * rng()); DICE_SUMS.push(s); }
+
+// ---------- timeline helpers ----------
+const sen = (i) => TL.sentences[i];
+function cue(i, word) {
+  const s = sen(i), txt = s.tts, idx = txt.indexOf(word);
+  const f = idx < 0 ? 0 : idx / txt.length;
+  return s.start + (s.end - s.start) * f;
+}
+function sceneRange(k) {
+  const first = TL.sentences.findIndex((s) => s.scene === k);
+  const nextIdx = TL.sentences.findIndex((s) => s.scene === k + 1);
+  const a = k === 1 ? 0 : sen(first).start - 0.35;
+  const b = nextIdx < 0 ? TL.total + 1 : sen(nextIdx).start - 0.35;
+  return [a, b];
+}
+
+// ---------- drawing helpers ----------
+function txt(s, x, y, { font = BODY, size = 28, weight = 400, color = C.ink, align = 'left', base = 'alphabetic', alpha = 1 } = {}) {
+  ctx.save(); ctx.globalAlpha *= alpha; ctx.font = `${weight} ${size}px ${font}`; ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = base; ctx.fillText(s, x, y); ctx.restore();
+}
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function panel(x, y, w, h, alpha = 1) { ctx.save(); ctx.globalAlpha *= alpha; rr(x, y, w, h, 18); ctx.fillStyle = 'rgba(28,26,56,0.88)'; ctx.fill(); ctx.strokeStyle = '#34315e'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore(); }
+function plot(x, y, w, h, xmin, xmax, ymax) { return { x, y, w, h, xmin, xmax, ymax, px: (v) => x + ((v - xmin) / (xmax - xmin)) * w, py: (v) => y + h - (v / ymax) * h }; }
+function axis(P, ticks, { color = C.dim, labels = true, size = 18 } = {}) {
+  ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(P.x, P.y + P.h + 0.5); ctx.lineTo(P.x + P.w, P.y + P.h + 0.5); ctx.stroke(); ctx.restore();
+  if (labels) for (const t of ticks) txt(String(t), P.px(t), P.y + P.h + 28, { size, color: C.ink2, align: 'center' });
+}
+function curve(P, f, a, b, { color = C.curve, width = 5, reveal = 1, dash = null, fill = null } = {}) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  if (dash) ctx.setLineDash(dash);
+  const end = a + (b - a) * reveal, N = 220;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) { const x = a + ((end - a) * i) / N; const y = P.py(Math.min(f(x), P.ymax * 1.05)); i ? ctx.lineTo(P.px(x), y) : ctx.moveTo(P.px(x), y); }
+  if (fill) { ctx.save(); ctx.lineTo(P.px(end), P.py(0)); ctx.lineTo(P.px(a), P.py(0)); ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.restore(); ctx.beginPath(); for (let i = 0; i <= N; i++) { const x = a + ((end - a) * i) / N; const y = P.py(Math.min(f(x), P.ymax * 1.05)); i ? ctx.lineTo(P.px(x), y) : ctx.moveTo(P.px(x), y); } }
+  if (reveal > 0) ctx.stroke();
+  ctx.restore();
+}
+function hatchBar(x, y, w, h, color, alpha = 1) {
+  ctx.save(); ctx.globalAlpha *= alpha;
+  ctx.fillStyle = color + '55'; ctx.fillRect(x, y, w, h);
+  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
+  for (let d = -h; d < w + h; d += 11) { ctx.beginPath(); ctx.moveTo(x + d, y + h); ctx.lineTo(x + d + h, y); ctx.stroke(); }
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha *= alpha; ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.strokeRect(x, y, w, h); ctx.restore();
+}
+function die(x, y, s, face, alpha = 1) {
+  ctx.save(); ctx.globalAlpha *= alpha; rr(x, y, s, s, s * 0.18); ctx.fillStyle = '#f4f0fb'; ctx.fill();
+  const pts = { 1: [[.5, .5]], 2: [[.27, .27], [.73, .73]], 3: [[.27, .27], [.5, .5], [.73, .73]], 4: [[.27, .27], [.73, .27], [.27, .73], [.73, .73]], 5: [[.27, .27], [.73, .27], [.5, .5], [.27, .73], [.73, .73]], 6: [[.27, .25], [.73, .25], [.27, .5], [.73, .5], [.27, .75], [.73, .75]] }[face];
+  ctx.fillStyle = '#14132a';
+  for (const [u, v] of pts) { ctx.beginPath(); ctx.arc(x + u * s, y + v * s, s * 0.085, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+}
+function ball(x, y, r, color, alpha = 1, glow = 0) {
+  ctx.save(); ctx.globalAlpha *= alpha;
+  if (glow) { ctx.shadowColor = color; ctx.shadowBlur = glow; }
+  const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
+  g.addColorStop(0, '#ffffff'); g.addColorStop(0.25, color); g.addColorStop(1, color);
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+}
+function arrow(x1, y1, x2, y2, color, width = 3, alpha = 1, head = 12) {
+  ctx.save(); ctx.globalAlpha *= alpha; ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  const a = Math.atan2(y2 - y1, x2 - x1);
+  ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - head * Math.cos(a - 0.45), y2 - head * Math.sin(a - 0.45)); ctx.lineTo(x2 - head * Math.cos(a + 0.45), y2 - head * Math.sin(a + 0.45)); ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function wrap(s, maxW, font) {
+  ctx.font = font; const words = s.split(' '); const lines = []; let line = '';
+  for (const w of words) { const test = line ? line + ' ' + w : w; if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w; } else line = test; }
+  if (line) lines.push(line); return lines;
+}
+function xbar(x, y, size, color, align = 'left') {
+  // italic x with an overline, drawn by hand so it renders the same everywhere
+  ctx.save(); ctx.font = `italic 400 ${size}px Georgia, serif`; ctx.fillStyle = color; ctx.textAlign = align; ctx.fillText('x', x, y);
+  const w = ctx.measureText('x').width; const x0 = align === 'center' ? x - w / 2 : x;
+  ctx.fillRect(x0 + w * 0.12, y - size * 0.72, w * 0.9, Math.max(2, size * 0.06)); ctx.restore();
+  return w;
+}
+
+// ---------- background ----------
+const bgCanvas = document.createElement('canvas'); bgCanvas.width = W; bgCanvas.height = H;
+(function paintBg() {
+  const b = bgCanvas.getContext('2d');
+  const g = b.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#191734'); g.addColorStop(1, '#100f22');
+  b.fillStyle = g; b.fillRect(0, 0, W, H);
+  // perspective floor grid
+  b.strokeStyle = 'rgba(80,74,150,0.22)'; b.lineWidth = 1;
+  const hy = 430, vx = W / 2;
+  for (let i = -16; i <= 16; i++) { b.beginPath(); b.moveTo(vx + i * 22, hy); b.lineTo(vx + i * 150, H); b.stroke(); }
+  for (let j = 0; j < 10; j++) { const y = hy + Math.pow(j / 9, 1.9) * (H - hy); b.beginPath(); b.moveTo(0, y); b.lineTo(W, y); b.stroke(); }
+  const v = b.createRadialGradient(W / 2, H / 2, 200, W / 2, H / 2, 820); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
+  b.fillStyle = v; b.fillRect(0, 0, W, H);
+})();
+
+// ---------- chrome: chip, captions, progress ----------
+function chrome(t) {
+  const sc = TL.sentences.reduce((acc, s) => (t >= s.start - 0.4 ? s.scene : acc), 1);
+  const scene = TL.scenes.find((s) => s.id === sc);
+  ctx.save(); ctx.font = `600 19px ${HEAD}`;
+  const label = `${sc} / 6  ·  ${scene.name.toUpperCase()}`;
+  const w = ctx.measureText(label).width + 36;
+  rr(40, 32, w, 40, 20); ctx.fillStyle = 'rgba(242,181,51,0.14)'; ctx.fill(); ctx.strokeStyle = 'rgba(242,181,51,0.6)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = C.mean; ctx.textBaseline = 'middle'; ctx.fillText(label, 58, 53); ctx.restore();
+  // brand
+  ctx.save(); ctx.translate(W - 268, 34); ctx.strokeStyle = C.mean; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, 32); ctx.bezierCurveTo(12, 32, 14, 4, 18, 4); ctx.bezierCurveTo(22, 4, 24, 32, 36, 32); ctx.stroke(); ctx.restore();
+  txt('Averages Lab', W - 222, 60, { font: HEAD, size: 24, weight: 800, color: C.ink });
+
+  // captions
+  const cur = TL.sentences.find((s) => t >= s.start - 0.15 && t <= s.end + 0.3);
+  if (cur) {
+    const a = Math.min(prog(t, cur.start - 0.15, cur.start + 0.1), 1 - prog(t, cur.end + 0.1, cur.end + 0.3));
+    const font = `400 27px ${BODY}`;
+    const lines = wrap(cur.text, 1060, font);
+    const lh = 37, bh = lines.length * lh + 24, by = H - 38 - bh;
+    ctx.save(); ctx.globalAlpha = a;
+    ctx.font = font; const bw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 44;
+    rr(W / 2 - bw / 2, by, bw, bh, 14); ctx.fillStyle = 'rgba(10,9,24,0.82)'; ctx.fill();
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    lines.forEach((l, i) => ctx.fillText(l, W / 2, by + 13 + i * lh));
+    ctx.restore();
+  }
+  // progress
+  ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(0, H - 5, W, 5);
+  ctx.fillStyle = C.mean; ctx.fillRect(0, H - 5, (W * t) / TL.total, 5);
+}
+
+// ---------- scenes ----------
+function scene1(t) {
+  const s0 = sen(0), s1 = sen(1), s2 = sen(2);
+  // left: one die population
+  const P = plot(110, 170, 420, 230, 0.4, 6.6, 0.22);
+  panel(80, 110, 480, 390, prog(t, 0.1, 0.6));
+  txt('One die', 110, 152, { font: HEAD, size: 30, weight: 800, alpha: prog(t, 0.2, 0.7) });
+  txt('population', 236, 152, { size: 20, color: C.popSoft, alpha: prog(t, 0.2, 0.7) });
+  for (let f = 1; f <= 6; f++) {
+    const k = eo(prog(t, 0.7 + f * 0.35, 1.3 + f * 0.35));
+    const h = (P.py(0) - P.py(1 / 6)) * k;
+    hatchBar(P.px(f) - 26, P.py(0) - h, 52, h, C.pop, k > 0 ? 1 : 0);
+    die(P.px(f) - 17, P.y + P.h + 14, 34, f, prog(t, 0.7 + f * 0.35, 1.0 + f * 0.35));
+  }
+  ctx.save(); ctx.strokeStyle = C.dim; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(P.x, P.py(0)); ctx.lineTo(P.x + P.w, P.py(0)); ctx.stroke(); ctx.restore();
+  txt('each face: 1 in 6, a flat shape', 110, 478, { size: 20, color: C.ink2, alpha: prog(t, 3.2, 3.8) });
+
+  // right: averages of 10 dice
+  const tR = s1.start - 0.2;
+  const Q = plot(700, 210, 470, 200, 1, 6, 280);
+  panel(670, 110, 530, 390, prog(t, tR, tR + 0.5));
+  txt('Average of 10 dice', 700, 152, { font: HEAD, size: 30, weight: 800, alpha: prog(t, tR, tR + 0.5) });
+  // rolling dice row
+  const rollA = prog(t, tR + 0.2, tR + 0.6);
+  const N = Math.round(5000 * Math.pow(prog(t, s1.start + 0.6, s2.start + 0.8), 2.3));
+  const fr = Math.floor(t * 8);
+  const r2 = mulberry32(fr * 7919 + 13);
+  let sum = 0;
+  for (let j = 0; j < 10; j++) { const f = 1 + Math.floor(6 * r2()); sum += f; if (rollA > 0) die(700 + j * 39, 174, 33, f, rollA); }
+  if (rollA > 0) {
+    const w = xbar(1100, 200, 28, C.mean, 'left');
+    txt(`= ${(sum / 10).toFixed(1)}`, 1104 + w, 200, { font: MONO, size: 24, color: C.mean, alpha: rollA });
+  }
+  // histogram
+  const counts = new Array(51).fill(0);
+  for (let i = 0; i < N; i++) counts[DICE_SUMS[i] - 10]++;
+  const scaleMax = Math.max(60, ...counts) * 1.08;
+  const QQ = plot(700, 236, 470, 180, 1, 6, scaleMax);
+  ctx.save(); ctx.globalAlpha = prog(t, tR, tR + 0.5);
+  ctx.fillStyle = C.mean;
+  counts.forEach((c, k) => { if (!c) return; const x = QQ.px((k + 10) / 10); const y = QQ.py(c); ctx.fillRect(x - 3.6, y, 7.2, QQ.py(0) - y); });
+  ctx.restore();
+  if (t > tR) axis(QQ, [1, 2, 3, 4, 5, 6], { size: 18 });
+  txt(`averages collected: ${N.toLocaleString('en-US')}`, 700, 482, { font: MONO, size: 19, color: C.ink2, alpha: prog(t, s1.start + 0.4, s1.start + 0.8) });
+  // bell
+  const bellK = eio(prog(t, s2.start - 0.1, s2.end + 0.2));
+  if (bellK > 0) {
+    const se = Math.sqrt(35 / 12) / Math.sqrt(10);
+    curve(QQ, (x) => (N * 0.1 * phi((x - 3.5) / se)) / se, 1.2, 5.8, { reveal: bellK, width: 5 });
+    txt('a bell!', QQ.px(4.75), QQ.py(scaleMax * 0.78), { font: HEAD, size: 30, weight: 800, color: C.curve, alpha: prog(t, s2.start + 0.5, s2.start + 0.9) });
+  }
+  // connecting arrow
+  arrow(575, 290, 650, 290, C.dim, 3, prog(t, tR, tR + 0.5));
+}
+
+function miniPop(x, y, w, h, kind, alpha) {
+  panel(x, y, w, h, alpha);
+  const P = plot(x + 16, y + 16, w - 32, h - 40, 0, 10, 1);
+  ctx.save(); ctx.globalAlpha *= alpha;
+  const f = { flat: () => 0.6, skew: (v) => 0.95 * Math.exp(-v / 1.6), two: (v) => 0.9 * (Math.exp(-((v - 2.6) ** 2) / 1.4) + Math.exp(-((v - 7.4) ** 2) / 1.4)), lumpy: (v) => (v < 3 ? 0.85 : v < 6 ? 0.25 : 0.6) }[kind];
+  curve(P, f, 0.2, 9.8, { color: C.pop, width: 3, fill: 'rgba(139,114,255,0.3)' });
+  ctx.restore();
+}
+
+function scene2(t) {
+  const s3 = sen(3), s4 = sen(4), s5 = sen(5);
+  // title
+  const titleUp = eio(prog(t, s4.start - 0.2, s4.start + 0.5));
+  const ty = lerp(330, 128, titleUp), tsz = lerp(64, 40, titleUp);
+  txt('The Central Limit Theorem', W / 2, ty, { font: HEAD, size: tsz, weight: 800, align: 'center', alpha: eo(prog(t, s3.start - 0.1, s3.start + 0.5)) });
+  if (t < s4.start - 0.2) txt('why averages of almost anything make a bell', W / 2, 390, { size: 26, color: C.ink2, align: 'center', alpha: prog(t, s3.start + 0.5, s3.start + 1) });
+
+  // s4: populations funnel into a bell
+  const a4 = Math.min(prog(t, s4.start, s4.start + 0.5), 1 - prog(t, s5.start - 0.2, s5.start + 0.2));
+  if (a4 > 0) {
+    const kinds = ['flat', 'skew', 'two', 'lumpy'];
+    kinds.forEach((k, i) => miniPop(90 + (i % 2) * 215, 180 + Math.floor(i / 2) * 140, 195, 122, k, a4 * eo(prog(t, s4.start + i * 0.6, s4.start + 0.4 + i * 0.6))));
+    txt('almost any population', 90, 470, { size: 22, color: C.popSoft, alpha: a4 });
+    arrow(530, 330, 640, 330, C.ink2, 4, a4 * prog(t, s4.start + 2.4, s4.start + 2.9), 16);
+    txt('sample means', 585, 305, { size: 19, color: C.ink2, align: 'center', alpha: a4 * prog(t, s4.start + 2.4, s4.start + 2.9) });
+    const bk = eio(prog(t, s4.start + 3.5, s4.end - 0.5));
+    panel(670, 180, 520, 262, a4 * prog(t, s4.start + 2.9, s4.start + 3.4));
+    const P = plot(700, 205, 460, 200, -3.5, 3.5, 0.45);
+    ctx.save(); ctx.globalAlpha = a4;
+    curve(P, phi, -3.3, 3.3, { reveal: bk, fill: 'rgba(242,181,51,0.28)', color: C.mean, width: 5 });
+    ctx.restore();
+    txt('approximately normal', 700, 470, { size: 22, color: C.mean, alpha: a4 * prog(t, s4.start + 4.5, s4.start + 5) });
+    const chips = ['independent samples', 'finite variance'];
+    chips.forEach((c, i) => {
+      const ca = a4 * prog(t, cue(4, i ? 'finite' : 'independent'), cue(4, i ? 'finite' : 'independent') + 0.4);
+      ctx.save(); ctx.globalAlpha = ca; ctx.font = `700 19px ${BODY}`; const w = ctx.measureText(c).width + 30;
+      const x = 520 + i * 250 - w / 2; rr(x, 498, w, 38, 19); ctx.strokeStyle = C.curve; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = C.curve; ctx.textBaseline = 'middle'; ctx.fillText(c, x + 15, 518); ctx.restore();
+    });
+  }
+  // s5: formula + narrowing bell
+  const a5 = prog(t, s5.start - 0.1, s5.start + 0.4);
+  if (a5 > 0) {
+    ctx.save(); ctx.globalAlpha = a5;
+    const fy = 215, fx = 360;
+    xbar(fx, fy, 50, C.mean);
+    txt('≈  N ( μ ,  σ / √n )', fx + 40, fy, { font: MONO, size: 46, color: C.ink });
+    // underline helpers
+    const muA = prog(t, cue(5, 'mu') - 0.1, cue(5, 'mu') + 0.3), seA = prog(t, cue(5, 'standard error') - 0.1, cue(5, 'standard error') + 0.3);
+    txt('centre: the true mean', 610, 262, { size: 20, color: C.ink2, align: 'center', alpha: muA });
+    txt('spread: the standard error', 800, 262, { size: 20, color: C.mean, align: 'left', alpha: seA });
+    const nK = eio(prog(t, cue(5, 'square root') - 0.5, s5.end + 0.3));
+    const n = Math.round(lerp(2, 40, nK));
+    const sig = 1.708, se = sig / Math.sqrt(n);
+    const P = plot(240, 300, 800, 200, 1.0, 6.0, 1.0 / (Math.sqrt(2 * Math.PI) * (sig / Math.sqrt(40))) * 1.05);
+    axis(P, [1, 2, 3, 4, 5, 6]);
+    curve(P, (x) => phi((x - 3.5) / se) / se, 1.0, 6.0, { fill: 'rgba(242,181,51,0.3)', color: C.mean, width: 4 });
+    ctx.save(); ctx.setLineDash([4, 6]); ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(P.px(3.5), P.y - 4); ctx.lineTo(P.px(3.5), P.py(0)); ctx.stroke(); ctx.restore();
+    txt('μ', P.px(3.5) + 8, P.y + 14, { size: 24, color: C.ink });
+    if (seA > 0) { const y = P.py(phi(1) / se); arrow(P.px(3.5), y, P.px(3.5 + se), y, C.mean, 3, seA, 10); }
+    txt(`n = ${n}`, 1060, 360, { font: MONO, size: 30, color: C.ink, align: 'left', alpha: prog(t, cue(5, 'square root') - 0.5, cue(5, 'square root')) });
+    txt(`σ/√n = ${se.toFixed(2)}`, 1060, 400, { font: MONO, size: 24, color: C.mean, align: 'left', alpha: prog(t, cue(5, 'square root') - 0.5, cue(5, 'square root')) });
+    ctx.restore();
+  }
+}
+
+function scene3(t) {
+  const s6 = sen(6), s7 = sen(7), s8 = sen(8);
+  // s6: cancelling
+  const a6 = Math.min(prog(t, s6.start - 0.2, s6.start + 0.3), 1 - prog(t, s7.start - 0.3, s7.start));
+  if (a6 > 0) {
+    ctx.save(); ctx.globalAlpha = a6;
+    txt('In an average, highs and lows cancel', W / 2, 150, { font: HEAD, size: 40, weight: 800, align: 'center' });
+    const P = plot(170, 300, 940, 120, 0, 10, 1);
+    axis(P, [0, 2, 4, 6, 8, 10]);
+    const vals = [1.4, 8.8, 3.2, 6.6, 2.3, 9.3];
+    const mean = vals.reduce((a, b) => a + b) / vals.length;
+    const tA = cue(6, 'In an average');
+    vals.forEach((v, i) => {
+      const k = eo(prog(t, tA + i * 0.18, tA + 0.35 + i * 0.18));
+      const merge = eio(prog(t, cue(6, 'cancel') - 0.2, s6.end + 0.2));
+      const x = lerp(P.px(v), P.px(mean), merge);
+      ball(x, P.py(0) - 22 - (1 - k) * 60, 16, C.popSoft, k * (1 - merge * 0.85), 10);
+      if (merge < 0.15 && k > 0.9 && (v < 2.5 || v > 8.5)) txt(v < 5 ? 'low' : 'high', P.px(v), P.py(0) - 52, { size: 20, color: C.ink2, align: 'center' });
+    });
+    const mA = prog(t, cue(6, 'cancel'), s6.end + 0.2);
+    ball(P.px(mean), P.py(0) - 22, 22, C.mean, mA, 20);
+    if (mA > 0) { xbar(P.px(mean) - 40, P.py(0) - 64, 30, C.mean); txt(`= ${mean.toFixed(2)}`, P.px(mean) - 18, P.py(0) - 64, { font: MONO, size: 24, color: C.mean, alpha: mA }); }
+    txt('An extreme average needs every value to be extreme in the same direction.', W / 2, 520, { size: 23, color: C.ink2, align: 'center', alpha: prog(t, s6.end - 0.6, s6.end) });
+    ctx.restore();
+  }
+  // s7: counting ways with two dice
+  const a7 = Math.min(prog(t, s7.start - 0.2, s7.start + 0.3), 1 - prog(t, s8.start - 0.3, s8.start));
+  if (a7 > 0) {
+    ctx.save(); ctx.globalAlpha = a7;
+    txt('Two dice: ways to make each total', W / 2, 150, { font: HEAD, size: 40, weight: 800, align: 'center' });
+    const sq = 26, gx = 300, base = 470;
+    for (let s = 2; s <= 12; s++) {
+      const ways = 6 - Math.abs(7 - s);
+      for (let w = 0; w < ways; w++) {
+        const k = eo(prog(t, s7.start + 0.15 * (s - 2) + w * 0.12, s7.start + 0.15 * (s - 2) + w * 0.12 + 0.3));
+        if (k <= 0) continue;
+        ctx.save(); ctx.globalAlpha *= k; rr(gx + (s - 2) * 62, base - (w + 1) * (sq + 6) - (1 - k) * 20, 50, sq, 6); ctx.fillStyle = s === 7 ? C.mean : C.pop; ctx.fill(); ctx.restore();
+      }
+      txt(String(s), gx + (s - 2) * 62 + 25, base + 30, { size: 22, color: C.ink2, align: 'center' });
+    }
+    const lab = prog(t, cue(7, 'middle') - 0.3, cue(7, 'middle'));
+    txt('6 ways', gx + 5 * 62 + 25, base - 6 * 32 - 18, { size: 24, weight: 700, color: C.mean, align: 'center', alpha: lab });
+    txt('1 way', gx + 25, base - 32 - 18, { size: 22, color: C.ink2, align: 'center', alpha: prog(t, cue(7, 'edges') - 0.3, cue(7, 'edges')) });
+    txt('1 way', gx + 10 * 62 + 25, base - 32 - 18, { size: 22, color: C.ink2, align: 'center', alpha: prog(t, cue(7, 'edges') - 0.3, cue(7, 'edges')) });
+    txt('total of the two dice', W / 2, base + 64, { size: 20, color: C.dim, align: 'center' });
+    ctx.restore();
+  }
+  // s8: skewed waiting times
+  const a8 = prog(t, s8.start - 0.2, s8.start + 0.3);
+  if (a8 > 0) {
+    ctx.save(); ctx.globalAlpha = a8;
+    txt('Skewed data, smoothed by averaging', W / 2, 150, { font: HEAD, size: 40, weight: 800, align: 'center' });
+    panel(70, 190, 440, 330); panel(560, 190, 650, 330);
+    const P = plot(100, 250, 380, 200, 0, 9, 0.55);
+    axis(P, [0, 2, 4, 6, 8]);
+    curve(P, (x) => Math.exp(-x / 2) / 2, 0.01, 9, { color: C.pop, width: 4, fill: 'rgba(139,114,255,0.3)' });
+    txt('waiting times (minutes)', 100, 232, { size: 21, color: C.popSoft });
+    txt('population: long right tail', 100, 498, { size: 18, color: C.ink2 });
+    const Q = plot(590, 250, 590, 200, 0, 5, 1.55);
+    axis(Q, [0, 1, 2, 3, 4, 5]);
+    txt('means of samples of size n', 590, 232, { size: 21, color: C.mean });
+    const ns = [2, 10, 50];
+    const cues = [cue(8, 'smoothed') - 1.2, cue(8, 'smoothed') + 0.3, cue(8, 'large enough') - 0.2];
+    ns.forEach((n, i) => {
+      const k = eio(prog(t, cues[i], cues[i] + 0.9));
+      if (k <= 0) return;
+      const alpha = i === 2 ? 1 : 0.55;
+      ctx.save(); ctx.globalAlpha *= alpha;
+      curve(Q, (x) => gammaPdf(x, n, 2 / n), 0.01, 5, { color: C.mean, width: i === 2 ? 5 : 3, reveal: k, fill: i === 2 ? 'rgba(242,181,51,0.22)' : null });
+      ctx.restore();
+      const lx = [Q.px(0.7), Q.px(2.45), Q.px(2.42)][i], ly = [Q.py(0.5), Q.py(0.42), Q.py(1.32)][i];
+      txt(`n = ${n}`, lx, ly, { font: MONO, size: 21, color: i === 2 ? C.mean : C.ink2, align: i === 0 ? 'center' : 'left', alpha: prog(t, cues[i] + 0.4, cues[i] + 0.8) });
+    });
+    const bellA = prog(t, s8.end - 0.4, s8.end + 0.3);
+    if (bellA > 0) { ctx.save(); ctx.globalAlpha *= bellA; curve(Q, (x) => phi((x - 2) / (2 / Math.sqrt(50))) / (2 / Math.sqrt(50)), 0.6, 3.4, { color: C.curve, width: 3, dash: [9, 7] }); ctx.restore(); txt('normal curve', Q.px(3.05), Q.py(0.75), { size: 19, color: C.curve, alpha: bellA }); }
+    ctx.restore();
+  }
+}
+
+function scene4(t) {
+  const s9 = sen(9), s10 = sen(10);
+  txt('Two centuries in the making', W / 2, 150, { font: HEAD, size: 44, weight: 800, align: 'center', alpha: prog(t, s9.start - 0.2, s9.start + 0.3) });
+  const x0 = 110, x1 = 1170, y = 380;
+  const yr = (v) => x0 + ((v - 1700) / (1950 - 1700)) * (x1 - x0);
+  const lineK = eio(prog(t, s9.start, s9.end + 0.6));
+  ctx.save(); ctx.strokeStyle = C.ink2; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(lerp(x0, x1, lineK), y); ctx.stroke(); ctx.restore();
+  for (const d of [1700, 1750, 1800, 1850, 1900, 1950]) {
+    const a = prog(t, s9.start + ((d - 1700) / 250) * 1.6, s9.start + ((d - 1700) / 250) * 1.6 + 0.3);
+    ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = C.dim; ctx.fillRect(yr(d) - 1, y - 8, 2, 16); ctx.restore();
+    txt(String(d), yr(d), y + 34, { size: 17, color: C.dim, align: 'center', alpha: a });
+  }
+  const ev = [
+    { year: 1733, who: 'Abraham de Moivre', what: 'coin tosses follow a bell', cue: 'Abraham', up: true },
+    { year: 1810, who: 'Pierre-Simon Laplace', what: 'sums of many errors', cue: 'Laplace', up: false },
+    { year: 1901, who: 'Aleksandr Lyapunov', what: 'first rigorous proof', cue: 'Lyapunov', up: true },
+    { year: 1920, who: 'George Pólya', what: 'names it “central limit theorem”', cue: 'George', up: false },
+  ];
+  ev.forEach((e) => {
+    const tc = cue(10, e.cue) - 0.15;
+    const k = eo(prog(t, tc, tc + 0.5));
+    if (k <= 0) return;
+    const x = yr(e.year);
+    ball(x, y, 11, C.mean, k, 16);
+    const dy = e.up ? -1 : 1;
+    ctx.save(); ctx.globalAlpha = k; ctx.strokeStyle = 'rgba(242,181,51,0.6)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y + dy * 14); ctx.lineTo(x, y + dy * 52); ctx.stroke(); ctx.restore();
+    const ty = e.up ? y - 150 : y + 92;
+    const align = e.year === 1920 ? 'right' : e.year === 1733 ? 'left' : 'center';
+    const ax = align === 'right' ? x + 40 : align === 'left' ? x - 40 : x;
+    txt(String(e.year), ax, ty + 30 - (1 - k) * 12, { font: HEAD, size: 40, weight: 800, color: C.mean, align, alpha: k });
+    txt(e.who, ax, ty + 64, { font: HEAD, size: 24, weight: 600, align, alpha: k });
+    txt(e.what, ax, ty + 92, { size: 20, color: C.ink2, align, alpha: k });
+  });
+}
+
+function icon(kind, x, y, w, h, k) {
+  ctx.save(); ctx.globalAlpha *= k; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  const cx = x + w / 2, by = y + h;
+  if (kind === 'ci') {
+    ctx.strokeStyle = C.ink2; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.moveTo(cx, y); ctx.lineTo(cx, by); ctx.stroke(); ctx.setLineDash([]);
+    [[-40, 30], [-10, 45], [-55, 20], [-22, 38]].forEach(([o, half], i) => { const yy = y + 10 + i * (h - 20) / 3; ctx.strokeStyle = C.mean; ctx.beginPath(); ctx.moveTo(cx + o - half + 30, yy); ctx.lineTo(cx + o + half + 30, yy); ctx.stroke(); ball(cx + o + 30, yy, 5, C.mean); });
+  } else if (kind === 'test') {
+    const P = plot(x, y, w, h, -3.5, 3.5, 0.42);
+    curve(P, phi, -3.5, 3.5, { color: C.ink2, width: 3 });
+    curve(P, phi, 1.96, 3.5, { color: C.red, width: 3, fill: 'rgba(255,138,112,0.45)' });
+    curve(P, phi, -3.5, -1.96, { color: C.red, width: 3, fill: 'rgba(255,138,112,0.45)' });
+  } else if (kind === 'poll') {
+    [[0.52, C.mean], [0.45, C.pop]].forEach(([v, col], i) => { const bx = x + 40 + i * 90, bh = v * h * 1.4; ctx.fillStyle = col; ctx.fillRect(bx, by - bh, 56, bh); ctx.strokeStyle = C.ink; ctx.beginPath(); ctx.moveTo(bx + 28, by - bh - 14); ctx.lineTo(bx + 28, by - bh + 14); ctx.moveTo(bx + 18, by - bh - 14); ctx.lineTo(bx + 38, by - bh - 14); ctx.moveTo(bx + 18, by - bh + 14); ctx.lineTo(bx + 38, by - bh + 14); ctx.stroke(); });
+  } else if (kind === 'trial') {
+    const P = plot(x, y, w, h, -3, 5, 0.45);
+    curve(P, phi, -3, 3.2, { color: C.pop, width: 3, fill: 'rgba(139,114,255,0.3)' });
+    curve(P, (v) => phi(v - 1.8), -1.2, 5, { color: C.mean, width: 3, fill: 'rgba(242,181,51,0.3)' });
+  } else if (kind === 'ab') {
+    [['A', '4.1%', C.pop], ['B', '4.9%', C.mean]].forEach(([l, v, col], i) => { const bx = x + 20 + i * 120; rr(bx, y + 10, 100, h - 20, 12); ctx.strokeStyle = col; ctx.stroke(); txt(l, bx + 50, y + 56, { font: HEAD, size: 34, weight: 800, color: col, align: 'center' }); txt(v, bx + 50, y + 92, { font: MONO, size: 20, color: C.ink2, align: 'center' }); });
+  } else if (kind === 'spc') {
+    ctx.setLineDash([7, 6]); ctx.strokeStyle = C.red; ctx.beginPath(); ctx.moveTo(x, y + 12); ctx.lineTo(x + w, y + 12); ctx.moveTo(x, by - 12); ctx.lineTo(x + w, by - 12); ctx.stroke(); ctx.setLineDash([]);
+    const r = mulberry32(5); ctx.strokeStyle = C.curve; ctx.beginPath();
+    for (let i = 0; i <= 14; i++) { const xx = x + (i * w) / 14, yy = y + h / 2 + (r() - 0.5) * (h - 46); i ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function scene5(t) {
+  const s11 = sen(11), s12 = sen(12);
+  const tiles = [['ci', 'Confidence intervals', 'confidence'], ['test', 'Hypothesis tests', 'hypothesis'], ['poll', 'Opinion polls', 'opinion'], ['trial', 'Clinical trials', 'clinical'], ['ab', 'A/B tests', 'A B'], ['spc', 'Control charts', 'control']];
+  const out = eio(prog(t, s12.start - 0.4, s12.start + 0.4));
+  txt('Where it does the work', W / 2, 140, { font: HEAD, size: 42, weight: 800, align: 'center', alpha: prog(t, s11.start - 0.2, s11.start + 0.3) * (1 - out) });
+  tiles.forEach(([k, label, c], i) => {
+    const tc = cue(11, c) - 0.2;
+    const a = eo(prog(t, tc, tc + 0.45)) * (1 - out);
+    if (a <= 0) return;
+    const col = i % 3, row = Math.floor(i / 3);
+    const x = 90 + col * 375, y = 180 + row * 200 - (1 - a) * 18;
+    panel(x, y, 345, 180, a);
+    icon(k, x + 24, y + 22, 190, 112, a);
+    txt(label, x + 22, y + 160, { font: HEAD, size: 23, weight: 600, alpha: a });
+    if (i === 5) txt('factories', x + 238, y + 80, { size: 18, color: C.ink2, alpha: a });
+    if (i === 0 || i === 3) txt(i === 0 ? 'research' : 'medicine', x + 238, y + 80, { size: 18, color: C.ink2, alpha: a });
+    if (i === 1) txt('science', x + 238, y + 80, { size: 18, color: C.ink2, alpha: a });
+    if (i === 2) txt('surveys', x + 238, y + 80, { size: 18, color: C.ink2, alpha: a });
+    if (i === 4) txt('online', x + 280, y + 80, { size: 18, color: C.ink2, alpha: a });
+  });
+  // s12: margin of error
+  if (out > 0) {
+    ctx.save(); ctx.globalAlpha = out;
+    txt('Every margin of error', W / 2, 170, { font: HEAD, size: 44, weight: 800, align: 'center' });
+    const y = 310;
+    txt('estimate  ±  1.96 × σ/√n', W / 2, y, { font: MONO, size: 52, color: C.mean, align: 'center' });
+    txt('95% margin of error, valid because averages are close to normal', W / 2, y + 56, { size: 24, color: C.ink2, align: 'center' });
+    const ex = prog(t, cue(12, 'margin') - 0.2, cue(12, 'margin') + 0.4);
+    panel(330, 420, 620, 110, ex);
+    txt('Poll of 1,000 people:', 360, 466, { size: 26, weight: 700, alpha: ex });
+    txt('± 3.1 points', 360, 506, { font: MONO, size: 28, color: C.curve, alpha: ex });
+    txt('1.96 × √(0.25/1000) ≈ 0.031', 920, 506, { font: MONO, size: 19, color: C.ink2, align: 'right', alpha: ex });
+    ctx.restore();
+  }
+}
+
+function scene6(t) {
+  const s13 = sen(13), s14 = sen(14);
+  const out = eio(prog(t, s14.start - 0.4, s14.start + 0.3));
+  if (out < 1) {
+    ctx.save(); ctx.globalAlpha = 1 - out;
+    txt('The fine print', W / 2, 150, { font: HEAD, size: 44, weight: 800, align: 'center' });
+    const items = [['Independent observations', 'independent'], ['Finite variance', 'finite'], ['Bigger samples for skewed data', 'bigger']];
+    items.forEach(([label, c], i) => {
+      const tc = cue(13, c) - 0.2;
+      const a = eo(prog(t, tc, tc + 0.4));
+      const y = 250 + i * 95;
+      panel(300, y - 50, 680, 76, a);
+      ctx.save(); ctx.globalAlpha *= a; ctx.strokeStyle = C.good; ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      const ck = prog(t, tc + 0.15, tc + 0.5);
+      ctx.beginPath(); ctx.moveTo(338, y - 12); ctx.lineTo(338 + 12 * Math.min(1, ck * 2), y - 12 + 12 * Math.min(1, ck * 2)); if (ck > 0.5) ctx.lineTo(350 + 24 * (ck - 0.5) * 2, y - (ck - 0.5) * 2 * 26); ctx.stroke(); ctx.restore();
+      txt(label, 392, y, { font: HEAD, size: 30, weight: 600, alpha: a });
+    });
+    ctx.restore();
+  }
+  if (out > 0) {
+    ctx.save(); ctx.globalAlpha = out;
+    // end card
+    ctx.save(); ctx.translate(W / 2 - 60, 150); ctx.strokeStyle = C.mean; ctx.lineWidth = 10; ctx.lineCap = 'round';
+    const k = eio(prog(t, s14.start - 0.2, s14.start + 1.2));
+    ctx.beginPath(); ctx.moveTo(0, 90); ctx.bezierCurveTo(36, 90, 42, 6, 60, 6); if (k > 0.5) ctx.bezierCurveTo(78, 6, 84, 90, 120, 90); ctx.stroke(); ctx.restore();
+    txt('Averages Lab', W / 2, 320, { font: HEAD, size: 66, weight: 800, align: 'center' });
+    txt('the Central Limit Theorem, by experiment', W / 2, 370, { size: 28, color: C.ink2, align: 'center' });
+    txt('Open the interactive 3D lab:', W / 2, 446, { size: 24, color: C.ink2, align: 'center', alpha: prog(t, cue(14, 'open') - 0.2, cue(14, 'open') + 0.3) });
+    txt('rajan56.github.io/CentralLimitTheorem-Explained', W / 2, 492, { font: MONO, size: 30, color: C.mean, align: 'center', alpha: prog(t, cue(14, 'open') - 0.2, cue(14, 'open') + 0.3) });
+    txt('Narration voice: Kokoro-82M (Apache 2.0) · No music · Free to use for teaching', W / 2, 600, { size: 17, color: C.dim, align: 'center', alpha: prog(t, s14.end - 0.2, s14.end + 0.6) });
+    ctx.restore();
+  }
+}
+
+const SCENES = [scene1, scene2, scene3, scene4, scene5, scene6];
+
+function renderFrame(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.drawImage(bgCanvas, 0, 0);
+  for (let k = 1; k <= 6; k++) {
+    const [a, b] = sceneRange(k);
+    if (t < a - 0.01 || t > b + 0.35) continue;
+    const alpha = k === 1 ? 1 - prog(t, b, b + 0.35) : Math.min(prog(t, a, a + 0.35), k === 6 ? 1 : 1 - prog(t, b, b + 0.35));
+    if (alpha <= 0) continue;
+    ctx.save(); ctx.globalAlpha = alpha; SCENES[k - 1](t); ctx.restore();
+  }
+  // global fade in / out
+  const f = Math.min(prog(t, 0, 0.5), 1 - prog(t, TL.total - 0.6, TL.total));
+  if (f < 1) { ctx.save(); ctx.globalAlpha = 1 - f; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+  chrome(t);
+  if (f < 1) { ctx.save(); ctx.globalAlpha = (1 - f) * 0.7; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+}
+
+window.ready = (async () => {
+  TL = await (await fetch('build/timeline.json')).json();
+  await document.fonts.load(`800 40px ${HEAD}`); await document.fonts.load(`600 40px ${HEAD}`);
+  await document.fonts.load(`400 20px ${BODY}`); await document.fonts.load(`700 20px ${BODY}`); await document.fonts.load(`500 20px ${MONO}`);
+  renderFrame(0);
+  const sc = document.getElementById('scrub'), tt = document.getElementById('tt');
+  sc.addEventListener('input', () => { renderFrame(+sc.value); tt.textContent = (+sc.value).toFixed(2) + ' s'; });
+  window.renderFrame = renderFrame;
+  return true;
+})();
+</script>
+</body>
+</html>
