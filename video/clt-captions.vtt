@@ -1,0 +1,63 @@
+WEBVTT
+
+NOTE Captions for 'The Central Limit Theorem in 90 seconds'. Timings come from the narration track.
+
+1
+00:00:00.700 --> 00:00:06.275
+Roll one die, and every number from one to six is equally likely. The picture is flat.
+
+2
+00:00:06.345 --> 00:00:10.730
+Now roll ten dice, average them, and repeat that thousands of times.
+
+3
+00:00:10.800 --> 00:00:12.914
+The averages pile up into a bell.
+
+4
+00:00:13.314 --> 00:00:15.398
+This is the Central Limit Theorem.
+
+5
+00:00:15.468 --> 00:00:23.326
+Take many independent samples from almost any population with finite variance, and the sample means become approximately normal.
+
+6
+00:00:23.396 --> 00:00:29.774
+They centre on the true mean, μ, and their spread, the standard error, is σ divided by the square root of n.
+
+7
+00:00:30.174 --> 00:00:34.708
+Why does this happen? In an average, high and low values cancel each other out.
+
+8
+00:00:34.778 --> 00:00:39.197
+And there are far more combinations that land near the middle than at the edges.
+
+9
+00:00:39.267 --> 00:00:45.725
+Even strongly skewed data, like waiting times, are smoothed into a bell once the samples are large enough.
+
+10
+00:00:46.125 --> 00:00:48.327
+The idea took two centuries to build.
+
+11
+00:00:48.397 --> 00:01:00.878
+Abraham de Moivre found the bell in coin tosses in 1733. Laplace generalised it around 1810, Lyapunov proved it in 1901, and George Pólya named it in 1920.
+
+12
+00:01:01.278 --> 00:01:11.874
+Today it sits underneath confidence intervals, hypothesis tests, opinion polls, clinical trials, A/B tests, and the control charts that keep factories on target.
+
+13
+00:01:11.944 --> 00:01:17.650
+Whenever research reports an average with a margin of error, this theorem is quietly doing the work.
+
+14
+00:01:18.050 --> 00:01:24.847
+Just remember the conditions: independent observations, finite variance, and bigger samples for skewed data.
+
+15
+00:01:24.917 --> 00:01:28.281
+Now open the lab, and watch the bell appear for yourself.
